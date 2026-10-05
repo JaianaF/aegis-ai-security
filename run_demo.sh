@@ -46,6 +46,8 @@ PY
 }
 
 MOCK_PID=""
+WORKER_PID=""
+
 if port_open "$MOCK_HOST" "$MOCK_PORT"; then
   if is_aegis_mock "$MOCK_HOST" "$MOCK_PORT"; then
     printf 'Mock lab already running on port %s; reusing it.\n' "$MOCK_PORT"
@@ -59,7 +61,13 @@ else
   MOCK_PID=$!
 fi
 
+python -m aegis.worker &
+WORKER_PID=$!
+
 cleanup() {
+  if [[ -n "$WORKER_PID" ]]; then
+    kill "$WORKER_PID" 2>/dev/null || true
+  fi
   if [[ -n "$MOCK_PID" ]]; then
     kill "$MOCK_PID" 2>/dev/null || true
   fi
