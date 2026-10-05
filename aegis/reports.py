@@ -7,10 +7,14 @@ def scan_to_dict(scan) -> dict[str, Any]:
     return {
         "id": scan.id,
         "target_id": scan.target_id,
+        "parent_scan_id": scan.parent_scan_id,
+        "engine": scan.engine,
         "status": scan.status,
         "score": scan.score,
+        "queued_at": scan.queued_at.isoformat() if scan.queued_at else None,
         "started_at": scan.started_at.isoformat() if scan.started_at else None,
         "finished_at": scan.finished_at.isoformat() if scan.finished_at else None,
+        "error": scan.error,
         "findings": [
             {
                 "probe_id": f.probe_id,
@@ -53,13 +57,15 @@ def scan_to_sarif(scan, target) -> dict[str, Any]:
                 "confidence": f.confidence,
                 "category": f.category,
                 "standardRefs": f.standard_refs,
+                "scanId": scan.id,
+                "engine": scan.engine,
             },
         })
     return {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
         "runs": [{
-            "tool": {"driver": {"name": "AegisAI Security", "version": "0.2.0", "rules": list(rules.values())}},
+            "tool": {"driver": {"name": "AegisAI Security", "version": "0.3.0", "rules": list(rules.values())}},
             "results": results,
         }],
     }
