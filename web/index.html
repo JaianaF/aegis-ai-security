@@ -11,7 +11,7 @@
     <section class="login-card">
       <div class="eyebrow">AI SECURITY TESTING</div>
       <h1>AegisAI Security</h1>
-      <p class="muted">Entre para administrar alvos autorizados e executar scans defensivos.</p>
+      <p class="muted">Entre para administrar projetos e executar avaliações defensivas autorizadas.</p>
       <label>Usuário<input id="loginUser" value="admin" autocomplete="username" /></label>
       <label>Senha<input id="loginPassword" value="aegis-demo" type="password" autocomplete="current-password" /></label>
       <button id="loginBtn">Entrar</button>
@@ -22,9 +22,9 @@
   <div id="appView" class="hidden">
     <header>
       <div>
-        <div class="eyebrow">AI SECURITY TESTING · v0.3</div>
+        <div class="eyebrow">AI SECURITY PLATFORM · v0.3</div>
         <h1>AegisAI Security</h1>
-        <p>Red team defensivo para APIs, RAG, agentes e MCP.</p>
+        <p>Scans defensivos para APIs, RAG, agentes e MCP.</p>
       </div>
       <div class="header-actions">
         <span id="health" class="pill">verificando…</span>
@@ -33,7 +33,7 @@
     </header>
 
     <main>
-      <section class="stats" id="stats">
+      <section class="stats">
         <article><span>Targets</span><strong id="statTargets">0</strong></article>
         <article><span>Scans</span><strong id="statScans">0</strong></article>
         <article><span>Último score</span><strong id="statScore">--</strong></article>
@@ -42,53 +42,72 @@
 
       <section class="card">
         <div class="section-title">
-          <div><h2>1. Cadastrar alvo autorizado</h2><p class="muted">Escolha um preset ou use uma API HTTP genérica.</p></div>
+          <div><h2>1. Workspace</h2><p class="muted">Organize avaliações por organização e projeto.</p></div>
+          <span class="safe-badge">TENANT-READY</span>
+        </div>
+        <div class="grid two">
+          <div class="subcard">
+            <h3>Organizações</h3>
+            <label>Existentes<select id="organizationSelect"></select></label>
+            <label>Nova organização<input id="organizationName" placeholder="Ex.: Minha Empresa" /></label>
+            <button id="createOrganization" class="secondary">Criar organização</button>
+            <p id="organizationResult" class="muted"></p>
+          </div>
+          <div class="subcard">
+            <h3>Projetos</h3>
+            <label>Organização<select id="projectOrganizationSelect"></select></label>
+            <label>Nome<input id="projectName" placeholder="Ex.: Chatbot Produção" /></label>
+            <label>Descrição<input id="projectDescription" placeholder="Escopo autorizado do projeto" /></label>
+            <button id="createProject" class="secondary">Criar projeto</button>
+            <p id="projectResult" class="muted"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <div><h2>2. Cadastrar alvo autorizado</h2><p class="muted">Escolha um preset ou use uma API HTTP genérica.</p></div>
           <span class="safe-badge">NON-DESTRUCTIVE</span>
         </div>
-
         <div class="grid three">
           <label>Projeto<select id="projectSelect"></select></label>
           <label>Nome<input id="name" value="Demo vulnerável" /></label>
           <label>Provider<select id="provider"></select></label>
           <label>Endpoint<input id="url" value="http://127.0.0.1:8010/vulnerable/chat" /></label>
         </div>
-
         <div class="grid two">
           <label>Response path<input id="responsePath" value="response" /></label>
           <label>Método<select id="method"><option>POST</option><option>PUT</option><option>PATCH</option></select></label>
         </div>
-
         <label>JSON do request<textarea id="template" rows="7">{"message":"{{PROMPT}}"}</textarea></label>
         <p id="authHint" class="muted"></p>
-
         <div class="capabilities">
           <label class="check"><input class="cap" value="chat" type="checkbox" checked /> Chat</label>
           <label class="check"><input class="cap" value="rag" type="checkbox" /> RAG</label>
           <label class="check"><input class="cap" value="agent" type="checkbox" /> Agent</label>
           <label class="check"><input class="cap" value="mcp" type="checkbox" /> MCP</label>
         </div>
-
         <label class="check authorization"><input id="authorized" type="checkbox" checked /> Confirmo que possuo autorização explícita para testar este alvo.</label>
         <button id="createTarget">Cadastrar alvo</button>
         <pre id="targetResult"></pre>
       </section>
 
       <section class="card">
-        <h2>2. Executar scan</h2>
+        <h2>3. Executar scan</h2>
         <div class="grid two">
           <label>Target<select id="targetSelect"></select></label>
           <label>Headers efêmeros (JSON)<textarea id="headers" rows="4" placeholder='{"Authorization":"Bearer ..."}'>{}</textarea></label>
         </div>
         <div class="row">
           <button id="runScan">Executar Security Scan</button>
-          <span class="muted">Credenciais enviadas aqui não são salvas no banco.</span>
+          <span class="muted">Headers são criptografados temporariamente para o worker e apagados ao finalizar.</span>
         </div>
       </section>
 
       <section class="card">
         <div class="row spread result-head">
           <div>
-            <h2>Resultado</h2>
+            <h2>4. Resultado</h2>
             <p class="muted" id="scanMeta">Nenhum scan executado.</p>
             <p id="regression" class="regression"></p>
           </div>
@@ -103,8 +122,33 @@
       </section>
 
       <section class="card">
-        <div class="section-title"><div><h2>Histórico</h2><p class="muted">Últimos 50 scans e regressões.</p></div></div>
+        <div class="section-title">
+          <div><h2>5. MCP Audit</h2><p class="muted">Análise estática de ferramentas e schemas MCP sem executar tools.</p></div>
+          <span class="safe-badge">STATIC REVIEW</span>
+        </div>
+        <label>Manifest / definição de tools (JSON)
+          <textarea id="mcpManifest" rows="12">{"tools":[{"name":"read_customer","description":"Read customer profile","inputSchema":{"type":"object","properties":{"customer_id":{"type":"string"}},"additionalProperties":false}},{"name":"admin_exec","description":"Execute admin command","inputSchema":{"type":"object","properties":{"command":{"type":"string"}},"additionalProperties":true}}]}</textarea>
+        </label>
+        <button id="auditMcp">Auditar MCP</button>
+        <div id="mcpResults" class="findings"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <div><h2>6. Integrações</h2><p class="muted">Ferramentas detectadas no ambiente do Aegis.</p></div>
+          <button id="refreshIntegrations" class="secondary">Atualizar</button>
+        </div>
+        <div id="integrations" class="integration-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><div><h2>7. Histórico</h2><p class="muted">Últimos scans e regressões.</p></div></div>
         <div id="history" class="history"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><div><h2>8. Audit trail</h2><p class="muted">Eventos administrativos e de segurança recentes.</p></div></div>
+        <div id="auditEvents" class="audit-list"></div>
       </section>
     </main>
   </div>
