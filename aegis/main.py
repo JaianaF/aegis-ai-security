@@ -134,7 +134,12 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db), actor:
 def create_target(payload: TargetCreate, db: Session = Depends(get_db), actor: str = Depends(require_user)):
     if not payload.authorized:
         raise HTTPException(400, "You must confirm that you are authorized to test this target.")
-    if not db.get(Project, payload.project_id):
+
+    project_id = payload.project_id
+    if project_id is None:
+        _, project_id = ensure_default_workspace()
+
+    if not db.get(Project, project_id):
         raise HTTPException(404, "Project not found.")
     if "{{PROMPT}}" not in str(payload.request_template):
         raise HTTPException(400, "request_template must contain the {{PROMPT}} placeholder.")
@@ -144,7 +149,7 @@ def create_target(payload: TargetCreate, db: Session = Depends(get_db), actor: s
         raise HTTPException(400, str(exc)) from exc
 
     target = Target(
-        project_id=payload.project_id,
+        project_id=project_id,
         name=payload.name,
         url=str(payload.url),
         method=payload.method,
