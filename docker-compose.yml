@@ -1,0 +1,19 @@
+services:
+  aegis:
+    build: .
+    environment:
+      ALLOW_PRIVATE_TARGETS: "true"
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "aegis-demo"
+      APP_SECRET: "docker-demo-secret-change-before-production"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mock-ai
+    command: uvicorn aegis.main:app --host 0.0.0.0 --port 8000
+
+  mock-ai:
+    build: .
+    ports:
+      - "8010:8010"
+    command: uvicorn aegis.mock_target:app --host 0.0.0.0 --port 8010
