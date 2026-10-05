@@ -1,33 +1,61 @@
-# AegisAI Security — v0.2
+# AegisAI Security — v0.3
 
-Plataforma defensiva para testar aplicações com IA por API. A v0.2 adiciona autenticação local, presets de provedores, perfis de capacidade (Chat/RAG/Agent/MCP), novos probes não destrutivos, reteste, comparação com baseline anterior e exportação JSON/SARIF.
+Plataforma defensiva para testar aplicações com IA por API, com foco em chatbots, RAG, agentes e MCP.
 
 > Use somente em sistemas que você possui ou tem autorização explícita para testar.
 
-## O que a v0.2 testa
+## Destaques da v0.3
 
-- Prompt injection direta com canário sintético.
-- Indirect prompt injection/RAG com conteúdo explicitamente marcado como não confiável.
-- Possível vazamento de system/developer instructions.
-- Exposição de padrões de secrets e possível PII durante probes de extração.
-- Comportamento de excessive agency e alegações de ações privilegiadas sem aprovação.
-- Boundary tests para agentes e MCP/tool metadata sem executar ferramentas reais.
-- Regressão: compara achados novos/resolvidos com o scan anterior do mesmo target.
+- Organizações e projetos para separar avaliações por workspace.
+- Targets vinculados a projetos.
+- Fila de scans no banco e worker separado.
+- Headers do scan criptografados temporariamente e removidos ao final da execução.
+- Recuperação de jobs travados/stale.
+- Auditoria estática de manifests/tools MCP sem executar ferramentas.
+- Detecção opcional de Promptfoo e garak instalados no ambiente.
+- Audit trail de ações administrativas e scans.
+- Retest e comparação de regressão.
+- Exportação JSON e SARIF 2.1.0.
+- Docker Compose com API, worker e laboratório vulnerável.
+- CI com instalação do pacote, compile smoke test e pytest.
+
+## Probes defensivos
+
+A suíte integrada inclui testes não destrutivos para:
+
+- prompt injection direta com canários sintéticos;
+- indirect prompt injection em conteúdo RAG explicitamente não confiável;
+- possível exposição de system/developer instructions;
+- padrões de secrets e possível PII durante probes de extração;
+- excessive agency e alegações de ações privilegiadas;
+- boundaries de agentes;
+- influência de metadata/tools MCP.
 
 Os probes embutidos não tentam executar shell, modificar dados, persistir payloads, burlar autenticação ou explorar o host.
 
-## Rodar a demo
+## Rodar localmente
 
 Requer Python 3.11+.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+
 pip install -r requirements.txt
-./run_demo.sh
+pip install -e .
+
+python -m pytest -q
+
+bash run_demo.sh
 ```
 
-Abra `http://127.0.0.1:8000`.
+Se as portas padrão estiverem ocupadas:
+
+```bash
+DASHBOARD_PORT=8001 MOCK_PORT=8011 bash run_demo.sh
+```
+
+Abra o dashboard informado no terminal.
 
 Credenciais da demo:
 
@@ -36,13 +64,13 @@ usuário: admin
 senha: aegis-demo
 ```
 
-O laboratório vulnerável fica em:
+O laboratório vulnerável padrão fica em:
 
 ```text
 http://127.0.0.1:8010/vulnerable/chat
 ```
 
-Cadastre com:
+Request template:
 
 ```json
 {
@@ -50,76 +78,69 @@ Cadastre com:
 }
 ```
 
-Response path: `response`.
+Response path:
 
-Marque Chat + RAG + Agent + MCP para ver a suíte ampliada. Para comparar com um alvo que recusa os testes, use `http://127.0.0.1:8010/secure/chat`.
-
-## Produção/local privado
-
-Copie `.env.example` para `.env` e troque obrigatoriamente `ADMIN_PASSWORD` e `APP_SECRET`. Mantenha `ALLOW_PRIVATE_TARGETS=false` quando não estiver testando um laboratório privado autorizado.
-
-## Presets de API
-
-O painel oferece presets para:
-
-- Generic HTTP API
-- OpenAI-compatible
-- Anthropic Messages API
-- Google Gemini
-- Azure OpenAI
-- Ollama
-
-As credenciais devem ser informadas **somente nos headers efêmeros do scan**. O Aegis não persiste esses headers. Não coloque API keys na URL ou no request template salvo.
-
-Exemplos de headers efêmeros:
-
-```json
-{"Authorization":"Bearer SUA_CHAVE"}
+```text
+response
 ```
 
-```json
-{"x-api-key":"SUA_CHAVE","anthropic-version":"2023-06-01"}
+Para a suíte ampliada, habilite Chat + RAG + Agent + MCP.
+
+## Fluxo assíncrono
+
+Ao iniciar um scan, a API retorna `202` e cria um job em estado `queued`.
+
+O worker executa:
+
+```text
+queued -> running -> completed
 ```
 
-```json
-{"x-goog-api-key":"SUA_CHAVE"}
+ou:
+
+```text
+queued -> running -> failed
 ```
 
-## API
+Os headers enviados para autenticar a API alvo são criptografados no payload temporário do job e apagados depois da execução.
+
+## MCP Audit
+
+O endpoint `POST /api/mcp/audit` faz análise estática do manifest fornecido e procura sinais como:
+
+- ferramentas associadas a shell/exec/admin/delete/SQL;
+- schemas com `additionalProperties=true`;
+- argumentos sensíveis como command, shell, path, URL, query, SQL, token, password, secret e key;
+- ferramentas sem descrição de escopo.
+
+Ele não invoca as ferramentas analisadas.
+
+## Integrações
+
+`GET /api/integrations` informa a disponibilidade de:
+
+- Aegis built-in engine;
+- Promptfoo;
+- garak.
+
+Promptfoo e garak são opcionais nesta versão. A v0.3 detecta sua presença no PATH, mas não os executa automaticamente.
+
+## Principais endpoints
 
 - `POST /api/login`
-- `GET /api/provider-presets`
-- `POST /api/targets`
-- `GET /api/targets`
+- `GET/POST /api/organizations`
+- `GET/POST /api/projects`
+- `GET/POST /api/targets`
 - `POST /api/scans`
 - `POST /api/scans/{id}/retest`
 - `GET /api/scans`
 - `GET /api/scans/{id}`
 - `GET /api/scans/{id}/report.json`
 - `GET /api/scans/{id}/report.sarif`
+- `POST /api/mcp/audit`
+- `GET /api/integrations`
+- `GET /api/audit-events`
 - Swagger: `/docs`
-
-## GitHub / CI
-
-A v0.2 inclui `.github/workflows/ci.yml`, executando `pytest` em pushes e pull requests.
-
-## Limitações atuais
-
-- Scans ainda são executados no processo web; fila Redis/Celery fica para a próxima etapa.
-- Os testes RAG/Agent/MCP avaliam comportamento observável pela API; ainda não fazem instrumentação interna de vector DB, tool gateway ou servidor MCP.
-- O login atual é single-admin e usa token assinado; organizações/tenants e RBAC ficam para a próxima etapa.
-- Integração nativa com Promptfoo/garak ainda não está embutida.
-
-## Próximos passos
-
-- PostgreSQL + Alembic e organizações/tenants.
-- Worker assíncrono Redis/Celery.
-- Test harness para tool calls reais com allowlist e sandbox.
-- Scanner de MCP manifest/tools e políticas de escopo.
-- RAG test datasets e isolamento multi-tenant.
-- Integração Promptfoo/garak.
-- GitHub SARIF upload/code scanning.
-- PDF executivo e dashboards de tendências.
 
 ## Docker Compose
 
@@ -127,10 +148,42 @@ A v0.2 inclui `.github/workflows/ci.yml`, executando `pytest` em pushes e pull r
 docker compose up --build
 ```
 
-Abra `http://127.0.0.1:8000` e use `admin / aegis-demo`. Como o scanner roda dentro do container, para o laboratório do Compose cadastre o target:
+O Compose inicia:
+
+- `aegis`: dashboard/API;
+- `worker`: executor assíncrono;
+- `mock-ai`: laboratório local vulnerável.
+
+API e worker compartilham o mesmo volume SQLite da demo.
+
+Dentro do container, cadastre o laboratório usando:
 
 ```text
 http://mock-ai:8010/vulnerable/chat
 ```
 
-Em instalação real, altere as credenciais e o `APP_SECRET` do Compose antes de expor o serviço.
+## Segurança
+
+- Targets privados/localhost são bloqueados por padrão e só ficam disponíveis quando `ALLOW_PRIVATE_TARGETS=true` é habilitado explicitamente para um laboratório autorizado.
+- Redirects não são seguidos.
+- Secrets e PII detectados são redigidos das evidências.
+- Credenciais de APIs alvo não devem ser colocadas na URL ou request template persistente.
+- Altere `ADMIN_PASSWORD` e `APP_SECRET` antes de expor a aplicação fora da máquina local.
+
+## Limitações atuais
+
+- Autenticação ainda é single-admin; RBAC e usuários por organização ficam para uma versão posterior.
+- SQLite é o padrão da demo; a camada SQLAlchemy já aceita outro `DATABASE_URL`, mas migrações Alembic/PostgreSQL completas ainda não estão fechadas.
+- Promptfoo/garak são detectados, mas ainda não fazem parte da fila de execução.
+- Auditoria MCP atual é estática; ainda não inspeciona um servidor MCP remoto nem executa tools.
+- Testes RAG/Agent/MCP observam o comportamento exposto pela API e não instrumentam internamente vector DBs ou tool gateways.
+
+## Próximos passos
+
+- PostgreSQL + Alembic.
+- RBAC e usuários por organização.
+- Executor Promptfoo/garak isolado.
+- Scanner de servidor MCP com allowlist e sandbox.
+- Test datasets para isolamento RAG multi-tenant.
+- Upload automatizado de SARIF para GitHub Code Scanning.
+- Dashboard de tendências e relatório executivo.
