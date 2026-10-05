@@ -49,7 +49,7 @@ class ProjectOut(BaseModel):
 
 
 class TargetCreate(BaseModel):
-    project_id: int
+    project_id: int | None = Field(default=None, ge=1)
     name: str = Field(min_length=2, max_length=120)
     url: HttpUrl
     method: Literal["POST", "PUT", "PATCH"] = "POST"
