@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AegisAI Security v0.2</title>
+  <title>AegisAI Security v0.3</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -22,7 +22,7 @@
   <div id="appView" class="hidden">
     <header>
       <div>
-        <div class="eyebrow">AI SECURITY TESTING · v0.2</div>
+        <div class="eyebrow">AI SECURITY TESTING · v0.3</div>
         <h1>AegisAI Security</h1>
         <p>Red team defensivo para APIs, RAG, agentes e MCP.</p>
       </div>
@@ -47,6 +47,7 @@
         </div>
 
         <div class="grid three">
+          <label>Projeto<select id="projectSelect"></select></label>
           <label>Nome<input id="name" value="Demo vulnerável" /></label>
           <label>Provider<select id="provider"></select></label>
           <label>Endpoint<input id="url" value="http://127.0.0.1:8010/vulnerable/chat" /></label>
