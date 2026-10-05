@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 let token = sessionStorage.getItem('aegisToken') || '';
 let presets = {};
 let currentScan = null;
+let pollTimer = null;
 
 function escapeHtml(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 
@@ -11,7 +12,12 @@ async function api(path, options={}) {
   const res = await fetch(path, {...options, headers});
   const data = await res.json().catch(()=>({}));
   if(res.status === 401 && path !== '/api/login') logout();
-  if(!res.ok) throw new Error(data.detail || JSON.stringify(data));
+  if(!res.ok) {
+    const detail = Array.isArray(data.detail)
+      ? data.detail.map(x => `${(x.loc||[]).join('.')}: ${x.msg}`).join(' | ')
+      : (data.detail || JSON.stringify(data));
+    throw new Error(detail);
+  }
   return data;
 }
 
@@ -26,7 +32,10 @@ async function downloadReport(path, filename){
 
 function showApp(){ $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); }
 function showLogin(){ $('appView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
-function logout(){ token=''; sessionStorage.removeItem('aegisToken'); currentScan=null; showLogin(); }
+function logout(){
+  if(pollTimer) clearTimeout(pollTimer);
+  token=''; sessionStorage.removeItem('aegisToken'); currentScan=null; showLogin();
+}
 
 async function login(){
   $('loginError').textContent='';
@@ -34,6 +43,14 @@ async function login(){
     const data = await api('/api/login',{method:'POST',body:JSON.stringify({username:$('loginUser').value,password:$('loginPassword').value})});
     token=data.token; sessionStorage.setItem('aegisToken',token); showApp(); await boot();
   }catch(e){$('loginError').textContent=e.message;}
+}
+
+async function refreshProjects(){
+  const projects = await api('/api/projects');
+  $('projectSelect').innerHTML = projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  if(!projects.length){
+    $('projectSelect').innerHTML = '<option value="">Nenhum projeto disponível</option>';
+  }
 }
 
 async function refreshTargets(){
@@ -52,7 +69,12 @@ async function refreshHistory(){
   if(!scans.length){$('history').innerHTML='<p class="muted">Nenhum scan ainda.</p>'; return;}
   $('history').innerHTML=scans.map(s=>{
     const r=s.regression||{};
-    const reg=r.baseline?'baseline':`+${r.new||0} novos · -${r.resolved||0} resolvidos · Δ ${r.score_delta??0}`;
+    let reg='aguardando execução';
+    if(s.status === 'completed'){
+      reg=r.baseline?'baseline':`+${r.new||0} novos · -${r.resolved||0} resolvidos · Δ ${r.score_delta??0}`;
+    } else if(s.status === 'failed') {
+      reg='falhou';
+    }
     return `<button class="history-row" data-scan="${s.id}"><span>#${s.id}</span><span>${escapeHtml(s.status)}</span><span class="mini-score">${s.score??'--'}</span><span>${escapeHtml(reg)}</span></button>`;
   }).join('');
   document.querySelectorAll('[data-scan]').forEach(btn=>btn.onclick=async()=>renderScan(await api(`/api/scans/${btn.dataset.scan}`)));
@@ -70,10 +92,32 @@ function renderScan(scan){
   currentScan=scan;
   $('scanMeta').textContent=`Scan #${scan.id} · ${scan.status}` + (scan.error ? ` · ${scan.error}` : '');
   $('score').textContent=scan.score==null?'--':`${scan.score}/100`;
+
   const r=scan.regression||{};
-  $('regression').textContent=r.baseline?'Primeiro scan deste alvo — este resultado vira a baseline.':`Comparado ao scan #${r.previous_scan_id}: ${r.new} novo(s), ${r.resolved} resolvido(s), ${r.unchanged} inalterado(s), score Δ ${r.score_delta}.`;
-  $('resultActions').classList.remove('hidden');
-  if(!scan.findings.length){$('findings').innerHTML='<p class="success">Nenhuma vulnerabilidade foi detectada pelos probes executados.</p>';return;}
+  if(scan.status === 'queued'){
+    $('regression').textContent='Scan enfileirado. O worker vai iniciar em instantes.';
+  } else if(scan.status === 'running'){
+    $('regression').textContent='Worker executando os probes de segurança…';
+  } else if(scan.status === 'failed'){
+    $('regression').textContent='O scan falhou. Veja a mensagem acima.';
+  } else {
+    $('regression').textContent=r.baseline
+      ? 'Primeiro scan deste alvo — este resultado vira a baseline.'
+      : `Comparado ao scan #${r.previous_scan_id}: ${r.new} novo(s), ${r.resolved} resolvido(s), ${r.unchanged} inalterado(s), score Δ ${r.score_delta}.`;
+  }
+
+  $('resultActions').classList.toggle('hidden', scan.status !== 'completed');
+
+  if(scan.status !== 'completed'){
+    $('findings').innerHTML='<p class="muted">Aguardando conclusão do scan…</p>';
+    return;
+  }
+
+  if(!scan.findings.length){
+    $('findings').innerHTML='<p class="success">Nenhuma vulnerabilidade foi detectada pelos probes executados.</p>';
+    return;
+  }
+
   $('findings').innerHTML = scan.findings.map(f=>`<article class="finding ${f.severity}">
     <div><span class="tag">${escapeHtml(f.severity)}</span><span class="tag">${escapeHtml(f.category)}</span><span class="tag">confiança ${escapeHtml(f.confidence)}</span></div>
     <h3>${escapeHtml(f.title)}</h3>
@@ -84,6 +128,20 @@ function renderScan(scan){
   </article>`).join('');
 }
 
+async function pollScan(scanId){
+  if(pollTimer) clearTimeout(pollTimer);
+  try{
+    const scan = await api(`/api/scans/${scanId}`);
+    renderScan(scan);
+    await refreshHistory();
+    if(scan.status === 'queued' || scan.status === 'running'){
+      pollTimer=setTimeout(()=>pollScan(scanId),1000);
+    }
+  }catch(e){
+    $('scanMeta').textContent=e.message;
+  }
+}
+
 $('loginBtn').onclick=login;
 $('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 $('logoutBtn').onclick=logout;
@@ -92,20 +150,35 @@ $('provider').onchange=providerChanged;
 $('createTarget').onclick = async () => {
   $('targetResult').className='';
   try{
+    const projectId=Number($('projectSelect').value);
+    if(!projectId) throw new Error('Selecione um projeto.');
     const capabilities=[...document.querySelectorAll('.cap:checked')].map(x=>x.value);
-    const body={name:$('name').value,url:$('url').value,method:$('method').value,provider:$('provider').value,capabilities,request_template:JSON.parse($('template').value),response_path:$('responsePath').value||null,authorized:$('authorized').checked};
+    const body={
+      project_id:projectId,
+      name:$('name').value,
+      url:$('url').value,
+      method:$('method').value,
+      provider:$('provider').value,
+      capabilities,
+      request_template:JSON.parse($('template').value),
+      response_path:$('responsePath').value||null,
+      authorized:$('authorized').checked
+    };
     const t=await api('/api/targets',{method:'POST',body:JSON.stringify(body)});
-    $('targetResult').textContent=`Alvo #${t.id} cadastrado com capacidades ${t.capabilities.join(', ')}.`;
+    $('targetResult').textContent=`Alvo #${t.id} cadastrado no projeto selecionado com capacidades ${t.capabilities.join(', ')}.`;
     await refreshTargets();
   }catch(e){$('targetResult').className='error';$('targetResult').textContent=e.message;}
 };
 
 $('runScan').onclick = async () => {
   try{
-    $('scanMeta').textContent='Executando probes defensivos…'; $('findings').innerHTML=''; $('regression').textContent='';
+    const targetId=Number($('targetSelect').value);
+    if(!targetId) throw new Error('Cadastre e selecione um target antes de executar o scan.');
+    $('scanMeta').textContent='Enfileirando scan defensivo…'; $('findings').innerHTML=''; $('regression').textContent='';
     const headers=JSON.parse($('headers').value||'{}');
-    const scan=await api('/api/scans',{method:'POST',body:JSON.stringify({target_id:Number($('targetSelect').value),headers,categories:[]})});
-    renderScan(scan); await refreshHistory();
+    const scan=await api('/api/scans',{method:'POST',body:JSON.stringify({target_id:targetId,engine:'builtin',headers,categories:[]})});
+    renderScan(scan);
+    await pollScan(scan.id);
   }catch(e){$('scanMeta').textContent=e.message;}
 };
 
@@ -113,11 +186,13 @@ $('retestBtn').onclick=async()=>{
   if(!currentScan) return;
   try{
     const headers=JSON.parse($('headers').value||'{}');
-    $('scanMeta').textContent=`Retestando a partir do scan #${currentScan.id}…`;
+    $('scanMeta').textContent=`Enfileirando retest do scan #${currentScan.id}…`;
     const scan=await api(`/api/scans/${currentScan.id}/retest`,{method:'POST',body:JSON.stringify({headers})});
-    renderScan(scan); await refreshHistory();
+    renderScan(scan);
+    await pollScan(scan.id);
   }catch(e){$('scanMeta').textContent=e.message;}
 };
+
 $('jsonReportBtn').onclick=()=>currentScan&&downloadReport(`/api/scans/${currentScan.id}/report.json`,`aegis-scan-${currentScan.id}.json`);
 $('sarifReportBtn').onclick=()=>currentScan&&downloadReport(`/api/scans/${currentScan.id}/report.sarif`,`aegis-scan-${currentScan.id}.sarif`);
 
@@ -128,8 +203,10 @@ async function boot(){
     $('provider').innerHTML=Object.entries(presets).map(([k,v])=>`<option value="${k}">${escapeHtml(v.label)}</option>`).join('');
     $('provider').value='generic';
     $('authHint').textContent='Use headers efêmeros apenas ao executar o scan.';
-    await refreshTargets(); await refreshHistory();
-  }catch(e){ if(token) $('health').textContent='API offline'; }
+    await refreshProjects();
+    await refreshTargets();
+    await refreshHistory();
+  }catch(e){ if(token) $('health').textContent=`API com erro: ${e.message}`; }
 }
 
 (async()=>{ if(token){showApp(); await boot();} else showLogin(); })();
