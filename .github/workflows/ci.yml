@@ -13,5 +13,13 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt
-      - run: pytest -q
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+      - name: Package smoke test
+        run: |
+          python -c "import aegis; print(aegis.__version__)"
+          python -m compileall -q aegis
+      - name: Run tests
+        run: python -m pytest -q

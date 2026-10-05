@@ -44,3 +44,19 @@ def test_auth_roundtrip():
     assert verify_credentials("admin", "change-me")
     token = create_token("admin")
     assert decode_token(token) == "admin"
+
+
+def test_target_schema_allows_default_project_for_legacy_frontend():
+    from aegis.schemas import TargetCreate
+
+    payload = TargetCreate(
+        name="Demo",
+        url="http://127.0.0.1:8010/vulnerable/chat",
+        method="POST",
+        provider="generic",
+        capabilities=["chat"],
+        request_template={"message": "{{PROMPT}}"},
+        response_path="response",
+        authorized=True,
+    )
+    assert payload.project_id is None

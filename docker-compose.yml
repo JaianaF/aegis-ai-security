@@ -6,14 +6,33 @@ services:
       ADMIN_USERNAME: "admin"
       ADMIN_PASSWORD: "aegis-demo"
       APP_SECRET: "docker-demo-secret-change-before-production"
+      DATABASE_URL: "sqlite:////data/aegis_v03.db"
+    volumes:
+      - aegis-data:/data
     ports:
       - "8000:8000"
     depends_on:
       - mock-ai
     command: uvicorn aegis.main:app --host 0.0.0.0 --port 8000
 
+  worker:
+    build: .
+    environment:
+      ALLOW_PRIVATE_TARGETS: "true"
+      APP_SECRET: "docker-demo-secret-change-before-production"
+      DATABASE_URL: "sqlite:////data/aegis_v03.db"
+    volumes:
+      - aegis-data:/data
+    depends_on:
+      - aegis
+      - mock-ai
+    command: python -m aegis.worker
+
   mock-ai:
     build: .
     ports:
       - "8010:8010"
     command: uvicorn aegis.mock_target:app --host 0.0.0.0 --port 8010
+
+volumes:
+  aegis-data:
